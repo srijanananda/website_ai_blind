@@ -57,117 +57,140 @@
 
   </div>
 
-  <script>
-  const connectBtn = document.getElementById('connectBtn');
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const video = document.getElementById('video');
-  const transcriptBox = document.getElementById('transcriptBox');
+ <script>
+let video = document.getElementById('video');
+let connectBtn = document.getElementById('connectBtn');
+let startBtn = document.getElementById('startBtn');
+let stopBtn = document.getElementById('stopBtn');
+let transcriptBox = document.getElementById('transcriptBox');
 
-  let stream = null;
-  let recognition = null;
-  let recognizing = false;
-  let stopRequested = false;  // Track if user wants to stop recognition
+let stream = null;
+let recognizing = false;
+let objectDetectionMode = false;
+let speechRecognition;
+let synth = window.speechSynthesis;
 
-  connectBtn.onclick = async () => {
+function speak(text) {
+    if (synth.speaking) {
+        synth.cancel();
+    }
+    const utter = new SpeechSynthesisUtterance(text);
+    synth.speak(utter);
+}
+
+connectBtn.onclick = async () => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
-      alert("Camera and microphone access granted.");
-      connectBtn.style.display = 'none';
-      startBtn.style.display = 'inline-block';
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        video.srcObject = stream;
+        startBtn.style.display = 'inline-block';
+        connectBtn.disabled = true;
+        transcriptBox.style.display = 'none'; // hide transcript initially
     } catch (err) {
-      alert('Error accessing media devices: ' + err.message);
+        alert('Error accessing camera/mic: ' + err.message);
     }
-  };
+};
 
-  startBtn.onclick = () => {
-    if (stream) {
-      video.srcObject = stream;
-      video.play();
+startBtn.onclick = () => {
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    transcriptBox.style.display = 'block';
+    startRecognition();
+};
 
-      stopRequested = false;   // Reset stop flag
-      startSpeechRecognition();
-
-      transcriptBox.style.display = 'block';
-      stopBtn.style.display = 'inline-block';
-      startBtn.style.display = 'none';
-    }
-  };
-
-  function startSpeechRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('Speech Recognition API not supported in this browser.');
-      return;
-    }
-
-    recognition = new SpeechRecognition();
-    recognition.continuous = true;       // Keep recognition running continuously
-    recognition.interimResults = true;   // Show partial (interim) results as you speak
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      recognizing = true;
-      console.log('Speech recognition started');
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      // You can optionally handle specific errors here
-    };
-
-    recognition.onend = () => {
-      recognizing = false;
-      console.log('Speech recognition ended');
-
-      // If the stop button was NOT pressed, restart recognition to keep it running
-      if (!stopRequested) {
-        console.log('Restarting speech recognition...');
-        recognition.start();
-      }
-    };
-
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-
-      transcriptBox.textContent = finalTranscript + interimTranscript;
-    };
-
-    recognition.start();
-  }
-
-  stopBtn.onclick = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      video.srcObject = null;
-      stream = null;
-    }
-
-    if (recognition && recognizing) {
-      stopRequested = true;  // Mark that user requested stop
-      recognition.stop();
-    }
-
-    transcriptBox.style.display = 'none';
-    transcriptBox.textContent = 'Listening...';
-
+stopBtn.onclick = () => {
     stopBtn.style.display = 'none';
     startBtn.style.display = 'inline-block';
-    connectBtn.style.display = 'inline-block';
-  };
+    stopRecognition();
+};
+
+function setupSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert("Your browser does not support Speech Recognition API.");
+        return;
+    }
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = false;
+    speechRecognition.lang = 'en-US';
+
+    speechRecognition.onresult = function(event) {
+        const transcript = event.results[event.results.length - 1][0].transcript.trim();
+        transcriptBox.textContent = transcript;
+
+        if (!objectDetectionMode && transcript.toLowerCase().includes("detect object")) {
+            speak("Object detection started.");
+            objectDetectionMode = true;
+            startObjectDetection();
+        } else if (objectDetectionMode && transcript.toLowerCase().includes("stop detection")) {
+            speak("Object detection stopped.");
+            objectDetectionMode = false;
+            stopObjectDetection();
+        }
+    };
+
+    speechRecognition.onerror = function(event) {
+        console.error("Speech recognition error", event.error);
+    };
+
+    speechRecognition.onend = function() {
+        if (recognizing) {
+            speechRecognition.start();
+        }
+    };
+}
+
+function startRecognition() {
+    if (!speechRecognition) setupSpeechRecognition();
+    recognizing = true;
+    speechRecognition.start();
+}
+
+function stopRecognition() {
+    recognizing = false;
+    if (speechRecognition) speechRecognition.stop();
+}
+
+// Object detection variables
+let detectionInterval;
+
+function captureFrame() {
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg');
+}
+
+function startObjectDetection() {
+    detectionInterval = setInterval(async () => {
+        if (!objectDetectionMode) return;
+
+        const frameDataUrl = captureFrame();
+
+        try {
+            const response = await fetch('/pc/object_detect/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'image=' + encodeURIComponent(frameDataUrl),
+            });
+            const data = await response.json();
+
+            if (data.object && data.object !== '') {
+                console.log("Detected object:", data.object);
+                speak(data.object);
+            }
+        } catch (e) {
+            console.error('Error detecting object:', e);
+        }
+    }, 3000); // every 3 seconds to reduce load
+}
+
+function stopObjectDetection() {
+    clearInterval(detectionInterval);
+}
+
 </script>
 
 </body>

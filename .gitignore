@@ -34,3 +34,8 @@ node_modules/
 staticfiles/
 media/
  
+#coco files
+# YOLO model files (don’t push these to GitHub)
+pc/ml/yolov3.cfg
+pc/ml/yolov3.weights
+pc/ml/coco.names
