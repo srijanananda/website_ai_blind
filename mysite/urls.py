@@ -17,7 +17,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path,include
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 
 # Home page view
 def home(request):
