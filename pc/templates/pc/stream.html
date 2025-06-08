@@ -2,74 +2,173 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>PC Camera Stream</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PC Live Stream & Speech Recognition</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    button { margin-right: 10px; margin-top: 10px; }
-    #startBtn, #stopBtn { display: none; }
-    video { margin-top: 20px; border: 1px solid #ccc; max-width: 100%; }
-    #status { margin-top: 20px; white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    #videoContainer {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    video {
+      border: 1px solid #ccc;
+      width: 480px;
+      height: 360px;
+      background: black;
+    }
+    #transcriptBox {
+      width: 400px;
+      height: 360px;
+      border: 1px solid #ccc;
+      padding: 10px;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      font-size: 16px;
+      background: #f9f9f9;
+    }
+    button {
+      margin-right: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <h1>Instructions</h1>
-  <p>Click "Connect" to allow access to your camera, microphone, and speaker. After permissions are granted, you can start streaming your webcam feed.</p>
 
-  <button id="connectBtn">Connect</button>
-  <button id="startBtn">Start</button>
-  <button id="stopBtn">Stop</button>
+  <h1>PC Camera Live Stream & Speech-to-Text</h1>
 
-  <div id="status">Status: Not connected</div>
+  <div>
+    <button id="connectBtn">Connect</button>
+    <button id="startBtn" style="display:none;">Start</button>
+    <button id="stopBtn" style="display:none;">Stop</button>
+  </div>
 
-  <video id="video" autoplay playsinline></video>
+  <div id="videoContainer" style="margin-top: 20px;">
+
+    <video id="video" autoplay playsinline></video>
+
+    <!-- Speech transcript box, initially hidden -->
+    <div id="transcriptBox" style="display:none;">Listening...</div>
+
+  </div>
 
   <script>
-    const connectBtn = document.getElementById('connectBtn');
-    const startBtn = document.getElementById('startBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const video = document.getElementById('video');
-    const statusDiv = document.getElementById('status');
+  const connectBtn = document.getElementById('connectBtn');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const video = document.getElementById('video');
+  const transcriptBox = document.getElementById('transcriptBox');
 
-    let mediaStream = null;
+  let stream = null;
+  let recognition = null;
+  let recognizing = false;
+  let stopRequested = false;  // Track if user wants to stop recognition
 
-    connectBtn.onclick = async () => {
-      statusDiv.textContent = 'Requesting permissions...';
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  connectBtn.onclick = async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+      alert("Camera and microphone access granted.");
+      connectBtn.style.display = 'none';
+      startBtn.style.display = 'inline-block';
+    } catch (err) {
+      alert('Error accessing media devices: ' + err.message);
+    }
+  };
 
-        statusDiv.textContent = 'Permissions granted:\n- Camera: ✅\n- Microphone: ✅\n- Speaker: ✅ (assumed)';
+  startBtn.onclick = () => {
+    if (stream) {
+      video.srcObject = stream;
+      video.play();
 
-        startBtn.style.display = 'inline-block';
-        stopBtn.style.display = 'none';
-        connectBtn.disabled = true;
-      } catch (err) {
-        statusDiv.textContent = 'Permission denied or error:\n' + err.message;
+      stopRequested = false;   // Reset stop flag
+      startSpeechRecognition();
+
+      transcriptBox.style.display = 'block';
+      stopBtn.style.display = 'inline-block';
+      startBtn.style.display = 'none';
+    }
+  };
+
+  function startSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech Recognition API not supported in this browser.');
+      return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;       // Keep recognition running continuously
+    recognition.interimResults = true;   // Show partial (interim) results as you speak
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      recognizing = true;
+      console.log('Speech recognition started');
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      // You can optionally handle specific errors here
+    };
+
+    recognition.onend = () => {
+      recognizing = false;
+      console.log('Speech recognition ended');
+
+      // If the stop button was NOT pressed, restart recognition to keep it running
+      if (!stopRequested) {
+        console.log('Restarting speech recognition...');
+        recognition.start();
       }
     };
 
-    startBtn.onclick = () => {
-      if (mediaStream) {
-        video.srcObject = mediaStream;
-        statusDiv.textContent += '\nStreaming started.';
-        startBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-block';
-      } else {
-        statusDiv.textContent = 'No media stream available. Please click Connect first.';
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
       }
+
+      transcriptBox.textContent = finalTranscript + interimTranscript;
     };
 
-    stopBtn.onclick = () => {
-      if (mediaStream) {
-        // Stop all tracks to release camera and microphone
-        mediaStream.getTracks().forEach(track => track.stop());
-        video.srcObject = null;
-        statusDiv.textContent += '\nStreaming stopped.';
-        stopBtn.style.display = 'none';
-        startBtn.style.display = 'inline-block';
-        connectBtn.disabled = false;
-        mediaStream = null;
-      }
-    };
-  </script>
+    recognition.start();
+  }
+
+  stopBtn.onclick = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+      stream = null;
+    }
+
+    if (recognition && recognizing) {
+      stopRequested = true;  // Mark that user requested stop
+      recognition.stop();
+    }
+
+    transcriptBox.style.display = 'none';
+    transcriptBox.textContent = 'Listening...';
+
+    stopBtn.style.display = 'none';
+    startBtn.style.display = 'inline-block';
+    connectBtn.style.display = 'inline-block';
+  };
+</script>
+
 </body>
 </html>
