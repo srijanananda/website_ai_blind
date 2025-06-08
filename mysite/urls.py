@@ -29,5 +29,6 @@ urlpatterns = [
     path('phone/', include('phone.urls')),
     path('pc/', include('pc.urls')),
     path('raspberrypi/', include('raspberrypi.urls')),
+    path('', lambda request: redirect('pc_stream')),
 ]
 

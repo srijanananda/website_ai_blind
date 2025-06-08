@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PC Camera Stream</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    button { margin-right: 10px; margin-top: 10px; }
+    #startBtn, #stopBtn { display: none; }
+    video { margin-top: 20px; border: 1px solid #ccc; max-width: 100%; }
+    #status { margin-top: 20px; white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Instructions</h1>
+  <p>Click "Connect" to allow access to your camera, microphone, and speaker. After permissions are granted, you can start streaming your webcam feed.</p>
+
+  <button id="connectBtn">Connect</button>
+  <button id="startBtn">Start</button>
+  <button id="stopBtn">Stop</button>
+
+  <div id="status">Status: Not connected</div>
+
+  <video id="video" autoplay playsinline></video>
+
+  <script>
+    const connectBtn = document.getElementById('connectBtn');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const video = document.getElementById('video');
+    const statusDiv = document.getElementById('status');
+
+    let mediaStream = null;
+
+    connectBtn.onclick = async () => {
+      statusDiv.textContent = 'Requesting permissions...';
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+
+        statusDiv.textContent = 'Permissions granted:\n- Camera: ✅\n- Microphone: ✅\n- Speaker: ✅ (assumed)';
+
+        startBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'none';
+        connectBtn.disabled = true;
+      } catch (err) {
+        statusDiv.textContent = 'Permission denied or error:\n' + err.message;
+      }
+    };
+
+    startBtn.onclick = () => {
+      if (mediaStream) {
+        video.srcObject = mediaStream;
+        statusDiv.textContent += '\nStreaming started.';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+      } else {
+        statusDiv.textContent = 'No media stream available. Please click Connect first.';
+      }
+    };
+
+    stopBtn.onclick = () => {
+      if (mediaStream) {
+        // Stop all tracks to release camera and microphone
+        mediaStream.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+        statusDiv.textContent += '\nStreaming stopped.';
+        stopBtn.style.display = 'none';
+        startBtn.style.display = 'inline-block';
+        connectBtn.disabled = false;
+        mediaStream = null;
+      }
+    };
+  </script>
+</body>
+</html>

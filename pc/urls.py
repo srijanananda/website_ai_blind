@@ -1,6 +1,6 @@
 from django.urls import path
-from . import views
+from .views import stream_page
 
 urlpatterns = [
-    path('', views.pc_home, name='pc_home'),
+    path('', stream_page, name='pc_stream'),
 ]
