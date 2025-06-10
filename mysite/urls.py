@@ -18,6 +18,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path,include
 from django.shortcuts import render, redirect
+from django.conf import settings
+from django.conf.urls.static import static
+
 
 # Home page view
 def home(request):
@@ -32,3 +35,5 @@ urlpatterns = [
     path('', lambda request: redirect('pc_stream')),
 ]
 
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
