@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Assistant</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f4f4;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+            padding: 20px;
+        }
+        .section {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 30%;
+        }
+        video, img {
+            width: 100%;
+            border-radius: 10px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+        }
+    </style>
+</head>
+<body>
+
+<h2 align="center">Smart Assistant</h2>
+
+<div class="container">
+    <!-- 🟦 Live Stream -->
+    <div class="section">
+        <h3>🟦 Live Stream</h3>
+        <img src="{% url 'video_feed' %}" id="videoStream">
+        <p><b>Detected:</b> <span id="detectionResult">None</span></p>
+    </div>
+
+    <!-- 🟨 Translation -->
+    <div class="section">
+        <h3>🟨 Translation</h3>
+        <textarea id="transcriptionBox" readonly></textarea>
+        <br><br>
+        <button onclick="startListening()">Start Listening</button>
+        <button onclick="stopListening()">Stop Listening</button>
+    </div>
+
+    <!-- 🟩 Upload Face -->
+    <div class="section">
+        <h3>🟩 Upload New Face</h3>
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="file" name="face_image" required><br><br>
+            <input type="text" name="person_name" placeholder="Enter name" required><br><br>
+            <input type="submit" value="Upload">
+        </form>
+    </div>
+</div>
+
+<script>
+    let recognition;
+    function startListening() {
+        window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+
+        recognition.onresult = function(event) {
+            let text = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                text += event.results[i][0].transcript;
+            }
+            document.getElementById('transcriptionBox').value = text;
+        };
+
+        recognition.start();
+    }
+
+    function stopListening() {
+        if (recognition) recognition.stop();
+    }
+</script>
+
+</body>
+</html>
