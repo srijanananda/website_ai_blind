@@ -6,14 +6,27 @@
  #   path('object_detect/', object_detect, name='object_detect'),
 #]
 
+#from django.urls import path
+#from . import views
+#
+#urlpatterns = [
+#    path('', views.index, name='index'),
+#    path('start/', views.start_system, name='start_system'),
+#    path('stop/', views.stop_system, name='stop_system'),
+#    path('upload_face/', views.upload_face, name='upload_face'),
+#    path('video_feed/', views.video_feed, name='video_feed'),
+#    path('transcript/', views.get_transcript, name='get_transcript'),
+#]
+
 from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('', views.index, name='index'),
-    path('start/', views.start_system, name='start_system'),
-    path('stop/', views.stop_system, name='stop_system'),
-    path('upload_face/', views.upload_face, name='upload_face'),
-    path('video_feed/', views.video_feed, name='video_feed'),
+    path('', views.index),
+    path('start_stream/', views.start_stream),
+    path('stop_stream/', views.stop_stream),
+    path('video_feed', views.video_feed),
+    path('get_transcript/', views.get_transcript),
+    path('start_system/', views.start_system),
+    path('set_mode/', views.set_mode),  # for switching modes
 ]
-path('transcript/', views.get_transcript, name='get_transcript'),

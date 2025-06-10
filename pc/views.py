@@ -1,161 +1,130 @@
-import time, base64, io
-from threading import Thread
-from django.shortcuts import render
+import threading
+import time
+import cv2
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import KnownFace
 from django.shortcuts import render
-# ML imports
-import cv2, numpy as np, face_recognition, pickle
-import speech_recognition as sr
+from django.conf import settings
+
+from pc.ml.object_detector import detect_objects
+from pc.ml.person_detector import detect_faces, load_known_faces
+from pc.models import KnownFace
+
+import pyttsx3
+
+# Shared state
 camera = cv2.VideoCapture(0)
-# Load YOLOv3
-net = cv2.dnn.readNet('pc/ml/yolov3.weights', 'pc/ml/yolov3.cfg')
-with open('pc/ml/coco.names') as f:
-    CLASS_NAMES = [line.strip() for line in f]
-layer_names = net.getLayerNames()
-out_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
+frame_lock = threading.Lock()
+output_frame = None
+current_mode = None  # 'object' or 'person'
+detection_result = ""
+last_announced = ""
+is_streaming = False
 
-# Globals
-running = False
-mode = None  # 'object' or 'person'
-last_announce = {'name': None, 'time': 0}
-transcript = ''
+# TTS setup
+engine = pyttsx3.init()
+engine.setProperty('rate', 160)
 
-# Load known faces
-def load_known():
-    db = KnownFace.objects.all()
-    encs, names = [], []
-    for k in db:
-        encs.append(pickle.loads(k.encoding))
-        names.append(k.name)
-    return encs, names
-known_encs, known_names = [], []
-
-def gen_frames():
-    cap = cv2.VideoCapture(0)
-    while running:
-        ret, frame = cap.read()
-        if not ret: break
-        _, buf = cv2.imencode('.jpg', frame)
-        yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'
-    cap.release()
-
-def inference_loop():
-    global mode, transcript, known_encs, known_names, last_announce
-    rec = sr.Recognizer()
-    mic = sr.Microphone()
-    while running:
-        with mic as src:
-            rec.adjust_for_ambient_noise(src)
-            audio = rec.listen(src, phrase_time_limit=4)
-        try:
-            text = rec.recognize_google(audio).lower()
-        except:
-            continue
-        transcript = text
-
-        now = time.time()
-        # Commands
-        if 'detect object' in text and mode != 'object':
-            mode, last_announce = 'object', {'name':None,'time':0}
-
-        if 'person detection' in text and mode != 'person':
-            known_encs, known_names = load_known()
-            mode, last_announce = 'person', {'name':None,'time':0}
-
-        if 'stop detection' in text:
-            mode = None
-
-        # Perform detection
-        _, frame = cv2.VideoCapture(0).read()
-        obj = None
-        if mode == 'object':
-            blob = cv2.dnn.blobFromImage(frame,1/255,(416,416),swapRB=True,crop=False)
-            net.setInput(blob)
-            outs = net.forward(out_layers)
-            boxes, confidences, classIDs = [],[],[]
-            h,w,_=frame.shape
-            for out in outs:
-                for det in out:
-                    scores = det[5:]
-                    cid = np.argmax(scores)
-                    if scores[cid] > 0.5:
-                        centerx, centery = int(det[0]*w), int(det[1]*h)
-                        obj = CLASS_NAMES[cid]; break
-                if obj: break
-        elif mode == 'person':
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            boxes = face_recognition.face_locations(rgb)
-            encs = face_recognition.face_encodings(rgb, boxes)
-            for enc in encs:
-                matches = face_recognition.compare_faces(known_encs, enc)
-                name = "Unknown"
-                if True in matches:
-                    name = known_names[matches.index(True)]
-                obj = name
-                break
-
-        # Speak if new + 10s passed
-        if obj and obj != last_announce['name'] and time.time() - last_announce['time'] > 10:
-            last_announce = {'name':obj,'time':time.time()}
-            transcript = transcript + f' | DETECTED: {obj}'
-    print("Inference ended.")
-
-# Views
-def pc_dashboard(request): return render(request, 'pc/index.html', {})
-
-@csrf_exempt
-def start_system(request):
-    global running
-    if not running:
-        running=True
-        Thread(target=inference_loop, daemon=True).start()
-    return JsonResponse({'status':'started'})
-
-@csrf_exempt
-def stop_system(request):
-    global running
-    running=False
-    return JsonResponse({'status':'stopped'})
-
-@csrf_exempt
-def upload_face(request):
-    name = request.POST.get('name')
-    imgb = request.FILES['image'].read()
-    arr = face_recognition.load_image_file(io.BytesIO(imgb))
-    enc = face_recognition.face_encodings(arr)
-    if enc:
-        kf = KnownFace(name=name, image=request.FILES['image'], encoding=pickle.dumps(enc[0]))
-        kf.save()
-        return JsonResponse({'status':'saved'})
-    return JsonResponse({'status':'fail'})
-
-def video_feed(request):
-    return StreamingHttpResponse(gen_frames(),
-        content_type='multipart/x-mixed-replace; boundary=frame')
-def get_transcript(request):
-    global transcript, last_announce
-    return JsonResponse({
-        'transcript': transcript,
-        'detection': last_announce['name']
-    })
-
+def tts_announce(text):
+    global last_announced
+    if text and text != last_announced:
+        engine.say(text)
+        engine.runAndWait()
+        last_announced = text
 
 def index(request):
     return render(request, 'pc/index.html')
 
-def gen_frames():
+@csrf_exempt
+def start_stream(request):
+    global is_streaming
+    is_streaming = True
+    return JsonResponse({"status": "streaming started"})
+
+@csrf_exempt
+def stop_stream(request):
+    global is_streaming
+    is_streaming = False
+    return JsonResponse({"status": "streaming stopped"})
+
+def generate_stream():
+    global output_frame, is_streaming, current_mode, detection_result
+
+    known_encs, known_names = [], []
+
     while True:
-        success, frame = camera.read()
-        if not success:
-            break
-        else:
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        if not is_streaming:
+            time.sleep(0.1)
+            continue
+
+        ret, frame = camera.read()
+        if not ret:
+            continue
+
+        frame = cv2.flip(frame, 1)
+
+        label = ""
+
+        if current_mode == "object":
+            frame, label = detect_objects(frame)
+        elif current_mode == "person":
+            if not known_encs:
+                known_encs, known_names = load_known_faces()
+            frame, label = detect_faces(frame, known_encs, known_names)
+
+        if label:
+            detection_result = label
+            tts_announce(label)
+
+        with frame_lock:
+            output_frame = frame.copy()
+
+        time.sleep(0.03)
 
 def video_feed(request):
-    return StreamingHttpResponse(gen_frames(),
-                                 content_type='multipart/x-mixed-replace; boundary=frame')
+    def generate():
+        global output_frame
+        while True:
+            with frame_lock:
+                if output_frame is None:
+                    continue
+                ret, jpeg = cv2.imencode('.jpg', output_frame)
+                if not ret:
+                    continue
+                frame_bytes = jpeg.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n\r\n')
+            time.sleep(0.05)
+
+    return StreamingHttpResponse(generate(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+@csrf_exempt
+def get_transcript(request):
+    return JsonResponse({
+        'transcript': current_mode or '',
+        'detection': detection_result
+    })
+
+@csrf_exempt
+def start_system(request):
+    t = threading.Thread(target=generate_stream, daemon=True)
+    t.start()
+    return JsonResponse({"status": "system thread started"})
+
+@csrf_exempt
+def set_mode(request):
+    global current_mode, last_announced
+    mode = request.GET.get("mode")
+    if mode in ["object", "person"]:
+        current_mode = mode
+        last_announced = ""
+        tts_announce(f"{mode} detection activated")
+        return JsonResponse({"mode": mode})
+    elif mode == "stop":
+        current_mode = None
+        last_announced = ""
+        tts_announce("detection stopped")
+        return JsonResponse({"mode": "stopped"})
+    else:
+        return JsonResponse({"error": "invalid mode"}, status=400)
