@@ -22,11 +22,10 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('', views.index),
+    path('', views.pc_dashboard),  # ← Fix here
     path('start_stream/', views.start_stream),
     path('stop_stream/', views.stop_stream),
-    path('video_feed', views.video_feed),
+    path('video_feed/', views.video_feed),
+    path('set_mode/', views.set_mode),
     path('get_transcript/', views.get_transcript),
-    path('start_system/', views.start_system),
-    path('set_mode/', views.set_mode),  # for switching modes
 ]
