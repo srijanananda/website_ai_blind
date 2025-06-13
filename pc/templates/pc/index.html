@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Assistant</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f4f4;
+        }
+        .container {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+            padding: 20px;
+        }
+        .section {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 30%;
+        }
+        video, img {
+            width: 100%;
+            border-radius: 10px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+        }
+        button {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h2 align="center">Smart Assistant</h2>
+
+<div class="container">
+    <!-- 🟦 Live Stream -->
+    <div class="section">
+        <h3>🟦 Live Stream</h3>
+        <img id="videoStream" style="display:none;">
+        <p><b>Detected:</b> <span id="detectionResult">None</span></p>
+        <button onclick="startStream()">Start Stream</button>
+        <button onclick="stopStream()">Stop Stream</button>
+    </div>
+
+    <!-- 🟨 Translation -->
+    <div class="section">
+        <h3>🟨 Translation</h3>
+        <textarea id="transcriptionBox" readonly></textarea><br>
+        <button onclick="startListening()">Start Listening</button>
+        <button onclick="stopListening()">Stop Listening</button>
+    </div>
+
+    <!-- 🟩 Upload Face -->
+    <div class="section">
+        <h3>🟩 Upload New Face</h3>
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="file" name="face_image" required><br><br>
+            <input type="text" name="person_name" placeholder="Enter name" required><br><br>
+            <input type="submit" value="Upload">
+        </form>
+    </div>
+</div>
+
+<script>
+    let recognition;
+    let transcriptPrev = '';
+    let streamStarted = false;
+
+    // Voice control
+    function startListening() {
+        window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN';
+
+        recognition.onresult = function(event) {
+            let text = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                text += event.results[i][0].transcript;
+            }
+            document.getElementById('transcriptionBox').value = text;
+
+          
+            // Voice triggers mode switch and stream
+            if (text.includes("object detection")) {
+    if (!streamStarted) startStream();
+    fetch("/pc/set_mode/?mode=object");
+} else if (text.includes("person detection")) {
+                if (!streamStarted) startStream();
+                fetch("/pc/set_mode/?mode=person");
+            } else if (text.includes("stop detection")) {
+                fetch("/pc/set_mode/?mode=stop");
+            }
+
+        };
+
+        recognition.start();
+    }
+
+    function stopListening() {
+        if (recognition) recognition.stop();
+    }
+
+    // Start stream manually
+    function startStream() {
+        fetch("/pc/start_stream/", {method: "POST"})
+            .then(() => {
+                document.getElementById("videoStream").src = "/pc/video_feed";
+                document.getElementById("videoStream").style.display = "block";
+                streamStarted = true;
+            });
+    }
+
+    function stopStream() {
+        fetch("/pc/stop_stream/", {method: "POST"})
+            .then(() => {
+                document.getElementById("videoStream").style.display = "none";
+                document.getElementById("videoStream").src = "";
+                streamStarted = false;
+            });
+    }
+
+    // Polling detection result
+    setInterval(() => {
+        fetch("/pc/get_transcript/")
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("transcriptionBox").value = data.transcript;
+                document.getElementById("detectionResult").innerText = data.detection || 'None';
+            });
+    }, 1000);
+
+    // Start backend thread on load
+    window.onload = function() {
+        fetch("/pc/start_system/", {method: "POST"});
+    };
+</script>
+<div style="text-align:center; margin-top: 30px; padding: 15px; font-size: 16px; color: #333;">
+    🗣️ <b>Say “object detection”, “person detection”, or “stop detection”</b> <br><br>
+    <b>"Upload New Faces"</b> is a feature to train the system for person recognition and may require multiple photos. <br>
+    This website is part of a future scope for an IoT-based project (<i>AI Specs for the Blind</i>) and is currently under development.
+</div>
+
+
+</body>
+</html>

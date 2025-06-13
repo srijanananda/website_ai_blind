@@ -1,0 +1,29 @@
+# Bytecode and logs
+__pycache__/
+*.py[cod]
+*.log
+
+# SQLite DB
+db.sqlite3
+
+# Environment
+venv/
+.venv/
+
+# Django static/media
+staticfiles/
+media/
+
+# Env config
+.env
+
+# VS Code config
+.vscode/
+
+# OS system files
+.DS_Store
+Thumbs.db
+
+# YOLO model files
+pc/ml/yolov3.cfg
+pc/ml/yolov3.weights

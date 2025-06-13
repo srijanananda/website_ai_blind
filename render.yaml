@@ -1,0 +1,17 @@
+# render.yaml
+services:
+  - type: web
+    name: website-ai-blind
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn website_ai_blind.wsgi:application"
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: website_ai_blind.settings
+      - key: SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: False
+      - key: ALLOWED_HOSTS
+        sync: false
+    staticPublishPath: staticfiles
