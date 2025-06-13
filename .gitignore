@@ -25,5 +25,5 @@ media/
 Thumbs.db
 
 # YOLO model files
-pc/ml/yolov3.cfg
+
 pc/ml/yolov3.weights
