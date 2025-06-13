@@ -5,12 +5,18 @@ from pc.models import KnownFace
 import pickle
 
 def load_known_faces():
-    from pc.models import KnownFace
-    known_encs, names = [], []
+    known_encodings = []
+    known_names = []
+
     for face in KnownFace.objects.all():
-        known_encs.append(pickle.loads(face.encoding))
-        names.append(face.name)
-    return known_encs, names
+        try:
+            encoding = np.frombuffer(face.encoding, dtype=np.float64)
+            known_encodings.append(encoding)
+            known_names.append(face.name)
+        except:
+            continue
+
+    return known_encodings, known_names
 
 def detect_person(frame, known_encs, known_names):
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
